@@ -17,7 +17,6 @@ public class LoanService {
     private final LoanIntegrationClient integrationClient;
     private final LoanRepository loanRepository;
 
-    // Constructor MUST be public
     public LoanService(LoanIntegrationClient integrationClient,
                        LoanRepository loanRepository) {
         this.integrationClient = integrationClient;
@@ -26,22 +25,40 @@ public class LoanService {
 
     public LoanResponseDto getLoanDetails(String loanAccountNumber) {
 
-        //  Call external API
         ExternalLoanResponseDto externalLoanResponseDto =
                 integrationClient.fetchLoanDetails(loanAccountNumber);
 
-        // 2 Map API response to Entity
+        if (externalLoanResponseDto == null || externalLoanResponseDto.getEmiDetails() == null
+                || externalLoanResponseDto.getEmiDetails().isEmpty()) {
+            throw new RuntimeException("No EMI details found for loanAccountNumber=" + loanAccountNumber);
+        }
+
+        ExternalLoanResponseDto.EmiDetail dueEmi = externalLoanResponseDto.getEmiDetails()
+                .stream()
+                .filter(emi -> Boolean.TRUE.equals(emi.getDueStatus()))
+                .findFirst()
+                .orElse(externalLoanResponseDto.getEmiDetails().get(0));
+
+        LocalDate dueDate = null;
+        try {
+            dueDate = java.time.YearMonth.parse(dueEmi.getMonth(), java.time.format.DateTimeFormatter.ofPattern("MMMM yyyy"))
+                    .atDay(1);
+        } catch (Exception e) {
+            log.warn("Failed to parse month {} for loanAccountNumber={}", dueEmi.getMonth(), loanAccountNumber);
+        }
+
+        // Map to Entity
         LoanAccountEntity entity = new LoanAccountEntity(
                 externalLoanResponseDto.getLoanAccountNumber(),
-                LocalDate.parse(externalLoanResponseDto.getDueDate()),
-                externalLoanResponseDto.getEmiAmount()
+                dueDate,
+                dueEmi.getEmiAmount()
         );
 
-        // 3️ Save to DB
+        // Save to DB
         loanRepository.save(entity);
         log.info("Loan details saved for loanAccountNumber={}", loanAccountNumber);
 
-        // 4️ Return required response
+        // Return API response
         return new LoanResponseDto(
                 entity.getLoanAccountNumber(),
                 entity.getDueDate(),
