@@ -8,6 +8,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 public class LoanApiDemoApplication {
 
 	public static void main(String[] args) {
+		// Disable SSL verification (for development/testing only)
 		try {
 			SSLUtil.disableSSLVerification();
 		} catch (Exception e) {
